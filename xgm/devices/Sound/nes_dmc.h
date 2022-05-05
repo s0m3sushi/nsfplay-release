@@ -39,12 +39,13 @@ namespace xgm
     UINT32 len_reg;
     UINT32 adr_reg;
     IDevice *memory;
-    UINT32 out[3];
+    double out[3];
     UINT32 daddress;
     UINT32 dlength;
     UINT32 data;
     bool empty;
     INT16 damp;
+	INT16 prev_damp;
     int dac_lsb;
     bool dmc_pop;
     INT32 dmc_pop_offset;
@@ -55,7 +56,8 @@ namespace xgm
     int mode;
     bool irq;
 
-    INT32 counter[3];  // frequency dividers
+    INT64 counter[3];  // frequency dividers
+	INT64 triangle_counter;
     int tphase;        // triangle phase
     UINT32 nfreq;      // noise frequency
     UINT32 dfreq;      // DPCM frequency
@@ -93,9 +95,13 @@ namespace xgm
 
     NES_CPU* cpu; // IRQ needs CPU access
 
-    inline UINT32 calc_tri (UINT32 clocks);
-    inline UINT32 calc_dmc (UINT32 clocks);
-    inline UINT32 calc_noise (UINT32 clocks);
+    inline double calc_tri (UINT32 clocks);
+    inline double calc_dmc (UINT32 clocks);
+    inline double calc_noise (UINT32 clocks);
+
+	double linear_approximate(double now_a, double min_a, double max_a, double min_b, double max_b);
+
+	void compute_triangle_counter();
 
   public:
       NES_DMC ();

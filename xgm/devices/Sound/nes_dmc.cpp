@@ -1,6 +1,7 @@
 #include "nes_dmc.h"
 #include "nes_apu.h"
 #include <cstdlib>
+#include <math.h>
 
 namespace xgm
 {
@@ -48,7 +49,7 @@ namespace xgm
     option[OPT_ENABLE_PNOISE] = 1;
     option[OPT_UNMUTE_ON_RESET] = 1;
     option[OPT_DPCM_ANTI_CLICK] = 0;
-    option[OPT_NONLINEAR_MIXER] = 1;
+    option[OPT_NONLINEAR_MIXER] = 0;
     option[OPT_RANDOMIZE_NOISE] = 1;
 	option[OPT_RANDOMIZE_TRI] = 1;
     option[OPT_TRI_MUTE] = 1;
@@ -93,7 +94,7 @@ namespace xgm
       else
         trkinfo[0].freq = 0;
       trkinfo[0].tone = -1;
-      trkinfo[0].output = out[0];
+      trkinfo[0].output = (INT32)out[0];
       break;
     case 1:
       trkinfo[1].max_volume = 15;
@@ -103,7 +104,7 @@ namespace xgm
       trkinfo[1]._freq = reg[0x400e - 0x4008]&0xF;
       trkinfo[1].freq = clock/double(wavlen_table[pal][trkinfo[1]._freq] * ((noise_tap&(1<<6)) ? 93 : 1));
       trkinfo[1].tone = noise_tap & (1<<6);
-      trkinfo[1].output = out[1];
+      trkinfo[1].output = (INT32)out[1];
       break;
     case 2:
       trkinfo[2].max_volume = 127;
@@ -190,46 +191,56 @@ namespace xgm
         if (!envelope_loop && (length_counter[1] > 0))
             --length_counter[1];
     }
+  }
 
+  double NES_DMC::linear_approximate(double now_a, double min_a, double max_a, double min_b, double max_b) {
+	  if (now_a < min_a) {
+		  now_a = min_a;
+	  }
+	  else if (now_a > max_a) {
+		  now_a = max_a;
+	  }
+
+	  return ((now_a - min_a) * (max_b - min_b)) / (max_a - min_a) + min_b;
   }
 
   // 三角波チャンネルの計算 戻り値は0-15
-  UINT32 NES_DMC::calc_tri (UINT32 clocks)
+  double NES_DMC::calc_tri (UINT32 clocks)
   {
-    static UINT32 tritbl[32] = 
-    {
-     15,14,13,12,11,10, 9, 8,
-      7, 6, 5, 4, 3, 2, 1, 0,
-      0, 1, 2, 3, 4, 5, 6, 7,
-      8, 9,10,11,12,13,14,15,
-    };
-
     if (linear_counter > 0 && length_counter[0] > 0
         && (!option[OPT_TRI_MUTE] || tri_freq > 0))
     {
       counter[0] -= clocks;
+
       while (counter[0] < 0)
       {
-        tphase = (tphase + 1) & 31;
-        counter[0] += (tri_freq + 1);
+		  counter[0] += triangle_counter;
       }
     }
 
-    UINT32 ret = tritbl[tphase];
-    return ret;
+	double ret;
+	if (counter[0] < (triangle_counter / 2.0)) {
+		ret = linear_approximate(counter[0], 0, triangle_counter / 2.0, 0.0, 1.0);
+	}
+	 else {
+		ret = linear_approximate(counter[0], triangle_counter / 2.0, triangle_counter, 1.0, 0.0);
+	}
+	//ret = 1500.0 + (sin(linear_approximate(counter[0], 0, triangle_counter, 0, 6.28318530718)) * 1500.0);
+
+	return ret;
   }
 
   // ノイズチャンネルの計算 戻り値は0-127
   // 低サンプリングレートで合成するとエイリアスノイズが激しいので
   // ノイズだけはこの関数内で高クロック合成し、簡易なサンプリングレート
   // 変換を行っている。
-  UINT32 NES_DMC::calc_noise(UINT32 clocks)
+  double NES_DMC::calc_noise(UINT32 clocks)
   {
     UINT32 env = envelope_disable ? noise_volume : envelope_counter;
     if (length_counter[1] < 1) env = 0;
 
     UINT32 last = (noise & 0x4000) ? 0 : env;
-    if (clocks < 1) return last;
+    if (clocks < 1) return (double)last;
 
     // simple anti-aliasing (noise requires it, even when oversampling is off)
     UINT32 count = 0;
@@ -261,7 +272,7 @@ namespace xgm
 
     if (count < 1) // no change over interval, don't anti-alias
     {
-       return last;
+       return (double)last;
     }
 
     accum -= (last * counter[1]); // remove these samples which belong in the next calc
@@ -270,13 +281,12 @@ namespace xgm
         if (start_clocks >= 0) assert(accum_clocks == clocks); // these should be equal
     #endif
 
-    UINT32 average = accum / accum_clocks;
-    assert(average <= 15); // above this would indicate overflow
-    return average;
+    double average = ((double)accum) / ((double)accum_clocks);
+	return average;
   }
 
 	// Tick the DMC for the number of clocks, and return output counter;
-	UINT32 NES_DMC::calc_dmc (UINT32 clocks)
+	double NES_DMC::calc_dmc (UINT32 clocks)
 	{
 		counter[2] -= clocks;
 		assert (dfreq > 0); // prevent infinite loop
@@ -288,10 +298,12 @@ namespace xgm
 			{
 				if (!empty)
 				{
-					if ((data & 1) && (damp < 63))
+					if ((data & 1) && (damp < 63)) {
 						damp++;
-					else if (!(data & 1) && (0 < damp))
+					} 
+					else if (!(data & 1) && (0 < damp)) {
 						damp--;
+					}
 				}
 				data >>=1;
 			}
@@ -360,60 +372,28 @@ namespace xgm
     out[1] = (mask & 2) ? 0 : out[1];
     out[2] = (mask & 4) ? 0 : out[2];
 
-    INT32 m[3];
-    m[0] = tnd_table[0][out[0]][0][0];
-    m[1] = tnd_table[0][0][out[1]][0];
-    m[2] = tnd_table[0][0][0][out[2]];
+	const double MASTER = 8192.0 * 0.95;
 
-    if (option[OPT_NONLINEAR_MIXER])
-    {
-        INT32 ref = m[0] + m[1] + m[2];
-        INT32 voltage = tnd_table[1][out[0]][out[1]][out[2]];
-        if (ref)
-        {
-            for (int i=0; i < 3; ++i)
-                m[i] = (m[i] * voltage) / ref;
-        }
-        else
-        {
-            for (int i=0; i < 3; ++i)
-                m[i] = voltage;
-        }
-    }
+    double m[3];
+    // m[0] = tnd_table[0][out[0]][0][0];
+	m[0] = (UINT32)(MASTER*(out[0] * 45.0) / 208.0);
+    //m[1] = tnd_table[0][0][out[1]][0];
+	//m[1] = (UINT32)(MASTER*((double)out[1] * 0.00078125) / 208.0);
+	m[1] = (UINT32)(MASTER*(out[1] * 1.95) / 208.0);
+	//m[1] = (UINT32)(MASTER*((double)out[1] * 2.0) / 208.0);
+	m[2] = tnd_table[0][0][0][(UINT32)out[2]];
 
-    // anti-click nullifies any 4011 write but preserves nonlinearity
-    if (option[OPT_DPCM_ANTI_CLICK])
-    {
-        if (dmc_pop) // $4011 will cause pop this frame
-        {
-            // adjust offset to counteract pop
-            dmc_pop_offset += dmc_pop_follow - m[2];
-            dmc_pop = false;
+    b[0]  = m[0] * (double)sm[0][0];
+    b[0] += m[1] * (double)sm[0][1];
+    b[0] += m[2] * (double)sm[0][2];
+    b[0] /= 128.0;
+	//b[0] >>= 4;
 
-            // prevent overflow, keep headspace at edges
-            const INT32 OFFSET_MAX = (1 << 30) - (4 << 16);
-            if (dmc_pop_offset >  OFFSET_MAX) dmc_pop_offset =  OFFSET_MAX;
-            if (dmc_pop_offset < -OFFSET_MAX) dmc_pop_offset = -OFFSET_MAX;
-        }
-        dmc_pop_follow = m[2]; // remember previous position
-
-        m[2] += dmc_pop_offset; // apply offset
-
-        // TODO implement this in a better way
-        // roll off offset (not ideal, but prevents overflow)
-        if (dmc_pop_offset > 0) --dmc_pop_offset;
-        else if (dmc_pop_offset < 0) ++dmc_pop_offset;
-    }
-
-    b[0]  = m[0] * sm[0][0];
-    b[0] += m[1] * sm[0][1];
-    b[0] += m[2] * sm[0][2];
-    b[0] >>= 7;
-
-    b[1]  = m[0] * sm[1][0];
-    b[1] += m[1] * sm[1][1];
-    b[1] += m[2] * sm[1][2];
-    b[1] >>= 7;
+    b[1]  = m[0] * (double)sm[1][0];
+    b[1] += m[1] * (double)sm[1][1];
+    b[1] += m[2] * (double)sm[1][2];
+    b[1] /= 128.0;
+	//b[0] >>= 4;
 
     return 2;
   }
@@ -524,6 +504,7 @@ namespace xgm
 
     out[0] = out[1] = out[2] = 0;
     damp = 0;
+	prev_damp = 0;
     dmc_pop = false;
     dmc_pop_offset = 0;
     dmc_pop_follow = 0;
@@ -564,6 +545,12 @@ namespace xgm
       if(id==OPT_NONLINEAR_MIXER)
         InitializeTNDTable(8227,12241,22638);
     }
+  }
+
+  void NES_DMC::compute_triangle_counter() {
+	  INT64 old_triangle_counter = triangle_counter;
+	  triangle_counter = (tri_freq + 1) * 32;
+	  counter[0] = linear_approximate(counter[0], 0, old_triangle_counter, 0, triangle_counter);
   }
 
   bool NES_DMC::Write (UINT32 adr, UINT32 val, UINT32 id)
@@ -662,10 +649,12 @@ namespace xgm
 
     case 0x400a:
       tri_freq = val | (tri_freq & 0x700) ;
+	  compute_triangle_counter();
       break;
 
     case 0x400b:
       tri_freq = (tri_freq & 0xff) | ((val & 0x7) << 8) ;
+	  compute_triangle_counter();
       linear_counter_halt = true;
       if (enable[0])
       {
