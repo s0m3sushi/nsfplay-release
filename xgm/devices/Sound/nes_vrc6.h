@@ -14,6 +14,8 @@ namespace xgm
     };
   protected:
     UINT32 counter[3]; // frequency divider
+	UINT64 saw_counter;
+	UINT64 saw_max_counter;
     UINT32 phase[3];   // phase counter
     UINT32 freq2[3];   // adjusted frequency
     int count14;       // saw 14-stage counter
@@ -26,14 +28,16 @@ namespace xgm
     int enable[3];
     int gate[3];
     UINT32 freq[3];
-    INT16 calc_sqr (int i, UINT32 clocks);
-    INT16 calc_saw (UINT32 clocks);
+    double calc_sqr (int i, UINT32 clocks);
+    double calc_saw (UINT32 clocks);
     bool halt;
     int freq_shift;
     double clock, rate;
-    INT32 out[3];
+    double out[3];
     TrackInfoBasic trkinfo[3];
 
+	double linear_approximate(double now_a, double min_a, double max_a, double min_b, double max_b);
+	void update_saw_counter();
   public:
       NES_VRC6 ();
      ~NES_VRC6 ();

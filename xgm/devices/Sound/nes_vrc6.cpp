@@ -82,6 +82,8 @@ namespace xgm
       Write (0xb000 + i, 0);
     }
     count14 = 0;
+	saw_counter = 0;
+	saw_max_counter = 0;
     mask = 0;
     counter[0] = 0;
     counter[1] = 0;
@@ -91,7 +93,7 @@ namespace xgm
     phase[0] = 2;
   }
 
-  INT16 NES_VRC6::calc_sqr (int i, UINT32 clocks)
+  double NES_VRC6::calc_sqr (int i, UINT32 clocks)
   {
     static const INT16 sqrtbl[8][16] = {
       {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
@@ -121,7 +123,18 @@ namespace xgm
       || sqrtbl[duty[i]][phase[i]])? volume[i] : 0;
   }
 
-  INT16 NES_VRC6::calc_saw (UINT32 clocks)
+  double NES_VRC6::linear_approximate(double now_a, double min_a, double max_a, double min_b, double max_b) {
+	  if (now_a < min_a) {
+		  now_a = min_a;
+	  }
+	  else if (now_a > max_a) {
+		  now_a = max_a;
+	  }
+
+	  return ((now_a - min_a) * (max_b - min_b)) / (max_a - min_a) + min_b;
+  }
+
+  double NES_VRC6::calc_saw (UINT32 clocks)
   {
     if (!enable[2])
       return 0;
@@ -129,6 +142,11 @@ namespace xgm
     if (!halt)
     {
       counter[2] += clocks;
+	  saw_counter++;
+	  if (saw_counter >= saw_max_counter) {
+		  saw_counter = 0;
+	  }
+
       while(counter[2] > freq2[2])
       {
           counter[2] -= (freq2[2] + 1);
@@ -139,6 +157,7 @@ namespace xgm
           {
             count14 = 0;
             phase[2] = 0;
+			//saw_counter = 0;
           }
           else if (0 == (count14 & 1)) // only accumulate on even ticks
           {
@@ -147,8 +166,7 @@ namespace xgm
       }
     }
 
-    // only top 5 bits of saw are output
-    return phase[2] >> 3;
+	return linear_approximate(saw_counter, 0.0, saw_max_counter, 0.0, (double)volume[2]);
   }
 
   void NES_VRC6::Tick (UINT32 clocks)
@@ -160,11 +178,12 @@ namespace xgm
 
   UINT32 NES_VRC6::Render (INT32 b[2])
   {
-    INT32 m[3];
+	  //out[2] = calc_saw(0);
+
+    double m[3];
     m[0] = out[0];
     m[1] = out[1];
-    m[2] = out[2];
-
+	m[2] = out[2] * 0.88;
     // note: signal is inverted compared to 2A03
 
     m[0] = (mask & 1) ? 0 : -m[0];
@@ -183,10 +202,16 @@ namespace xgm
 
     // master volume adjustment
     const INT32 MASTER = INT32(256.0 * 1223.0 / 1920.0);
-    b[0] = (b[0] * MASTER) >> 8;
-    b[1] = (b[1] * MASTER) >> 8;
+    b[0] = (b[0] * MASTER) / 256.0;
+    b[1] = (b[1] * MASTER) / 256.0;
 
     return 2;
+  }
+
+  void  NES_VRC6::update_saw_counter() {
+	  INT64 old_saw_max_counter = saw_max_counter;
+	  saw_max_counter = (480000.0) / (1789773.0 / (14.0 * (freq2[2] + 1)));
+	  saw_counter = linear_approximate(saw_counter, 0, old_saw_max_counter, 0, saw_max_counter);
   }
 
   bool NES_VRC6::Write (UINT32 adr, UINT32 val, UINT32 id)
@@ -204,7 +229,7 @@ namespace xgm
       break;
     case 0xb000:
       volume[2] = val & 63;
-      break;
+	  break;
 
     case 0x9001:
     case 0xa001:
@@ -212,6 +237,7 @@ namespace xgm
       ch = cmap[(adr >> 12) & 3];
       freq[ch] = (freq[ch] & 0xf00) | val;
       freq2[ch] = (freq[ch] >> freq_shift);
+	  if (ch == 2) update_saw_counter();
       if (counter[ch] > freq2[ch]) counter[ch] = freq2[ch];
       break;
 
@@ -221,6 +247,7 @@ namespace xgm
       ch = cmap[(adr >> 12) & 3];
       freq[ch] = ((val & 0xf) << 8) + (freq[ch] & 0xff);
       freq2[ch] = (freq[ch] >> freq_shift);
+	  if (ch == 2) update_saw_counter();
       if (counter[ch] > freq2[ch]) counter[ch] = freq2[ch];
       if (!enable[ch]) // if enable is being turned on, phase should be reset
       {
