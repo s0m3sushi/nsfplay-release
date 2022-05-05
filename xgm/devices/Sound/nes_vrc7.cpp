@@ -144,11 +144,14 @@ namespace xgm
   UINT32 NES_VRC7::Render (INT32 b[2])
   {
     b[0] = b[1] = 0;
+	double tempb[2];
+	tempb[0] = tempb[1] = 0;
+
     for (int i=0; i < 6; ++i)
     {
-        INT32 val = (mask & (1<<i)) ? 0 : opll->ch_out[i] >> 4;
-        b[0] += val * sm[0][i];
-        b[1] += val * sm[1][i];
+        double val = (mask & (1<<i)) ? 0 : ((double)opll->ch_out[i]) / 16.0;
+        tempb[0] += val * (double)sm[0][i];
+        tempb[1] += val * (double)sm[1][i];
     }
 
     // HACK for YM2413 support
@@ -158,7 +161,7 @@ namespace xgm
         {
             if (mask & (1<<i)) continue;
             
-            INT32 val;
+            double val;
             if (opll->patch_number[i] > 15) // rhytm mode
             {
               if      (i == 6) val = opll->ch_out[9]; // BD
@@ -170,19 +173,19 @@ namespace xgm
             {
               val = opll->ch_out[i];
             }
-            val >>= 4;
-            b[0] += val * sm[0][i];
-            b[1] += val * sm[1][i];
+            val /= 16.0;
+            tempb[0] += val * sm[0][i];
+            tempb[1] += val * sm[1][i];
         }
     }
 
-    b[0] >>= (7 - 4);
-    b[1] >>= (7 - 4);
+    tempb[0] /= 8.0;
+    tempb[1] /= 8.0;
 
     // master volume adjustment
-    const INT32 MASTER = INT32(1.15 * 256.0);
-    b[0] = (b[0] * MASTER) >> 8;
-    b[1] = (b[1] * MASTER) >> 8;
+    const double MASTER = 1.15 * 256.0;
+    b[0] = (tempb[0] * MASTER) / 256.0;
+    b[1] = (tempb[1] * MASTER) / 256.0;
 
     return 2;
   }
