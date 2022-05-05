@@ -162,69 +162,34 @@ void NES_N106::Tick (UINT32 clocks)
 
 UINT32 NES_N106::Render (INT32 b[2])
 {
-    b[0] = 0;
-    b[1] = 0;
-    if (master_disable) return 2;
+	b[0] = 0;
+	b[1] = 0;
+	
+	double tempb[2];
+	tempb[0] = 0;
+	tempb[1] = 0;
+
+	if (master_disable) return 2;
 
     int channels = get_channels();
 
-    if (option[OPT_SERIAL]) // hardware accurate serial multiplexing
+    for (int i = (8-channels); i<8; ++i)
     {
-        // this could be made more efficient than going clock-by-clock
-        // but this way is simpler
-        int clocks = render_clock;
-        while (clocks > 0)
+        if (0 == ((mask >> i) & 1))
         {
-            int c = 7-render_channel;
-            if (0 == ((mask >> c) & 1))
-            {
-                b[0] += fout[c] * sm[0][c];
-                b[1] += fout[c] * sm[1][c];
-            }
-            
-            ++render_subclock;
-            if (render_subclock >= 15) // each channel gets a 15-cycle slice
-            {
-                render_subclock = 0;
-                ++render_channel;
-                if (render_channel >= channels)
-                    render_channel = 0;
-            }
-            --clocks;
+            tempb[0] += fout[i] * (double)sm[0][i];
+            tempb[1] += fout[i] * (double)sm[1][i];
         }
-
-        // increase output level by 1 bits (7 bits already added from sm)
-        b[0] <<= 1;
-        b[1] <<= 1;
-
-        // average the output
-        if (render_clock > 0)
-        {
-            b[0] /= render_clock;
-            b[1] /= render_clock;
-        }
-        render_clock = 0;
     }
-    else // just mix all channels
-    {
-        for (int i = (8-channels); i<8; ++i)
-        {
-            if (0 == ((mask >> i) & 1))
-            {
-                b[0] += fout[i] * sm[0][i];
-                b[1] += fout[i] * sm[1][i];
-            }
-        }
 
-        // mix together, increase output level by 8 bits, roll off 7 bits from sm
-        INT32 MIX[9] = { 256/1, 256/1, 256/2, 256/3, 256/4, 256/5, 256/6, 256/6, 256/6 };
-        b[0] = (b[0] * MIX[channels]) >> 7;
-        b[1] = (b[1] * MIX[channels]) >> 7;
-        // when approximating the serial multiplex as a straight mix, once the
-        // multiplex frequency gets below the nyquist frequency an average mix
-        // begins to sound too quiet. To approximate this effect, I don't attenuate
-        // any further after 6 channels are active.
-    }
+    // mix together, increase output level by 8 bits, roll off 7 bits from sm
+    double MIX[9] = { 256.0/1.0, 256.0/1.0, 256.0/2.0, 256.0/3.0, 256.0/4.0, 256.0/5.0, 256.0/6.0, 256.0/6, 256.0/6.0 };
+    tempb[0] = (tempb[0] * MIX[channels]) / 128.0;
+    tempb[1] = (tempb[1] * MIX[channels]) / 128.0;
+    // when approximating the serial multiplex as a straight mix, once the
+    // multiplex frequency gets below the nyquist frequency an average mix
+    // begins to sound too quiet. To approximate this effect, I don't attenuate
+    // any further after 6 channels are active.
 
     // 8 bit approximation of master volume
     // max N163 vol vs max APU square
@@ -233,9 +198,9 @@ UINT32 NES_N106::Render (INT32 b[2])
     // and lower volumes on others. Using 6.0x as a rough "one size fits all".
     const double MASTER_VOL = 6.0 * 1223.0;
     const double MAX_OUT = 15.0 * 15.0 * 256.0; // max digital value
-    const INT32 GAIN = int((MASTER_VOL / MAX_OUT) * 256.0f);
-    b[0] = (b[0] * GAIN) >> 8;
-    b[1] = (b[1] * GAIN) >> 8;
+    const double GAIN = int((MASTER_VOL / MAX_OUT) * 256.0f);
+    b[0] = (tempb[0] * GAIN) / 256.0;
+    b[1] = (tempb[1] * GAIN) / 256.0;
 
     return 2;
 }
@@ -255,29 +220,7 @@ bool NES_N106::Write (UINT32 adr, UINT32 val, UINT32 id)
     }
     else if (adr == 0x4800) // register write
     {
-        if (option[OPT_PHASE_READ_ONLY]) // old emulators didn't know phase was stored here
-        {
-            int c = 15 - (reg_select/8);
-            int r = reg_select & 7;
-            if (c < get_channels() &&
-                (r == 1 ||
-                 r == 3 ||
-                 r == 5))
-            {
-                if (reg_advance)
-                    reg_select = (reg_select + 1) & 0x7F;
-                return true;
-            }
-        }
-        if (option[OPT_LIMIT_WAVELENGTH]) // old emulators ignored top 3 bits of length
-        {
-            int c = 15 - (reg_select/8);
-            int r = reg_select & 7;
-            if (c < get_channels() && r == 4)
-            {
-                val |= 0xE0;
-            }
-        }
+        
         reg[reg_select] = val;
         if (reg_advance)
             reg_select = (reg_select + 1) & 0x7F;

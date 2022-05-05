@@ -27,7 +27,7 @@ protected:
     double rate, clock;
     int mask;
     INT32 sm[2][8]; // stereo mix
-    INT32 fout[8]; // current output
+    double fout[8]; // current output
     TrackInfoN106 trkinfo[8];
     int option[OPT_END];
 
