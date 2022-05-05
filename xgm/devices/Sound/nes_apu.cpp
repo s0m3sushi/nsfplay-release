@@ -86,7 +86,7 @@ namespace xgm
 
   }
 
-  INT32 NES_APU::calc_sqr (int i, UINT32 clocks)
+  double NES_APU::calc_sqr (int i, UINT32 clocks)
   {
     static const INT16 sqrtbl[4][16] = {
       {0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -143,38 +143,18 @@ namespace xgm
     out[0] = (mask & 1) ? 0 : out[0];
     out[1] = (mask & 2) ? 0 : out[1];
 
-    INT32 m[2];
+    double m[2];
 
-    if(option[OPT_NONLINEAR_MIXER])
-    {
-        INT32 voltage = square_table[out[0] + out[1]];
-        m[0] = out[0] << 6;
-        m[1] = out[1] << 6;
-        INT32 ref = m[0] + m[1];
-        if (ref > 0)
-        {
-            m[0] = (m[0] * voltage) / ref;
-            m[1] = (m[1] * voltage) / ref;
-        }
-        else
-        {
-            m[0] = voltage;
-            m[1] = voltage;
-        }
-    }
-    else
-    {
-        m[0] = (out[0] * square_linear) / 15;
-        m[1] = (out[1] * square_linear) / 15;
-    }
+    m[0] = (out[0] * square_linear) / 15.0;
+    m[1] = (out[1] * square_linear) / 15.0;
 
     b[0]  = m[0] * sm[0][0];
     b[0] += m[1] * sm[0][1];
-    b[0] >>= 7;
+    b[0] /= 128.0;
 
     b[1]  = m[0] * sm[1][0];
     b[1] += m[1] * sm[1][1];
-    b[1] >>= 7;
+    b[1] /= 128.0;
 
     return 2;
   }
@@ -185,7 +165,7 @@ namespace xgm
     SetRate (DEFAULT_RATE);
     option[OPT_UNMUTE_ON_RESET] = true;
     option[OPT_PHASE_REFRESH] = true;
-    option[OPT_NONLINEAR_MIXER] = true;
+    option[OPT_NONLINEAR_MIXER] = false;
     option[OPT_DUTY_SWAP] = false;
     option[OPT_NEGATE_SWEEP_INIT] = false;
 

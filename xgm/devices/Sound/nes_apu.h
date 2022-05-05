@@ -28,11 +28,11 @@ namespace xgm
 
     UINT32 gclock;
     UINT8 reg[0x20];
-    INT32 out[2];
+    double out[2];
     double rate, clock;
 
     INT32 square_table[32];     // nonlinear mixer
-    INT32 square_linear;        // linear mix approximation
+    double square_linear;        // linear mix approximation
 
     int scounter[2];            // frequency divider
     int sphase[2];              // phase counter
@@ -61,7 +61,7 @@ namespace xgm
     bool enable[2];
 
     void sweep_sqr (int ch); // calculates target sweep frequency
-    INT32 calc_sqr (int ch, UINT32 clocks);
+    double calc_sqr (int ch, UINT32 clocks);
     TrackInfoBasic trkinfo[2];
 
   public:
