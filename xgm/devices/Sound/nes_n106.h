@@ -31,6 +31,11 @@ protected:
     TrackInfoN106 trkinfo[8];
     int option[OPT_END];
 
+	double chphase2[8];
+	double chfreq2[8];
+	double chmaxphase2[8];
+
+
     bool master_disable;
     UINT32 reg[0x80]; // all state is contained here
     unsigned int reg_select;
@@ -57,6 +62,7 @@ public:
     ~NES_N106 ();
 
     virtual void Reset ();
+	double linear_approximate(double now_a, double min_a, double max_a, double min_b, double max_b);
     virtual void Tick (UINT32 clocks);
     virtual UINT32 Render (INT32 b[2]);
     virtual bool Write (UINT32 adr, UINT32 val, UINT32 id=0);

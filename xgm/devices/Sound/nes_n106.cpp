@@ -120,6 +120,17 @@ void NES_N106::Reset ()
     Write(0xF800, 0x00); // select $00 without auto-increment
 }
 
+double NES_N106::linear_approximate(double now_a, double min_a, double max_a, double min_b, double max_b) {
+	if (now_a < min_a) {
+		now_a = min_a;
+	}
+	else if (now_a > max_a) {
+		now_a = max_a;
+	}
+
+	return ((now_a - min_a) * (max_b - min_b)) / (max_a - min_a) + min_b;
+}
+
 void NES_N106::Tick (UINT32 clocks)
 {
     if (master_disable) return;
@@ -138,6 +149,8 @@ void NES_N106::Tick (UINT32 clocks)
         UINT32 off   = get_off(channel);
         INT32  vol   = get_vol(channel);
 
+		
+
         // accumulate 24-bit phase
         phase = (phase + freq) & 0x00FFFFFF;
 
@@ -149,8 +162,8 @@ void NES_N106::Tick (UINT32 clocks)
         set_phase(phase, channel);
 
         // fetch sample (note: N163 output is centred at 8, and inverted w.r.t 2A03)
-        INT32 sample = 8 - get_sample(((phase >> 16) + off) & 0xFF);
-        fout[channel] = sample * vol;
+        // INT32 sample = 8 - get_sample(((phase >> 16) + off) & 0xFF);
+        // fout[channel] = sample * vol;
 
         // cycle to next channel every 15 clocks
         tick_clock -= 15;
@@ -158,6 +171,42 @@ void NES_N106::Tick (UINT32 clocks)
         if (tick_channel >= channels)
             tick_channel = 0;
     }
+
+	for (int channel = 7; channel >= (8 - channels); channel--) {
+		double phase = chphase2[channel];
+		double freq = (double)get_freq(channel);
+		double len = (double)get_len(channel) * 65536.0;
+		double off = get_off(channel);
+		double vol = get_vol(channel);
+
+		phase += (((1.0 / 15.0) / (double)channels) * freq) * (double)clocks;
+		if (phase >= len) {
+			phase -= len;
+		}
+
+		chphase2[channel] = phase;
+
+		double index = ((phase / 65536.0) + off);
+		if (index > 255.0) {
+			index = 255.0;
+		}
+
+		if (true) {
+			fout[channel] = linear_approximate(
+				index, (INT32)index,
+				((INT32)index) + 1,
+
+				8.0 - (double)get_sample((INT32)index),
+				8.0 - (double)get_sample(((INT32)index) + 1)
+			) * (double)vol;
+		}
+		else {
+			fout[channel] = (8.0 - (double)get_sample((INT32)index)) * (double)vol;
+		}
+
+		//double sample = 8.0 - get_sample((INT32)index);
+		//fout[channel] = sample * (double)vol;
+	}
 }
 
 UINT32 NES_N106::Render (INT32 b[2])
