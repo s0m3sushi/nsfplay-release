@@ -31,6 +31,7 @@ namespace xgm
     static const UINT32 freq_table[2][16];
     static const UINT32 wavlen_table[2][16];
     UINT32 tnd_table[2][16][16][128];
+	UINT32 dpcm_max_count_table[16];
 
     int option[OPT_END];
     int mask;
@@ -61,6 +62,8 @@ namespace xgm
     int tphase;        // triangle phase
     UINT32 nfreq;      // noise frequency
     UINT32 dfreq;      // DPCM frequency
+	INT64 dpcm_counter; // counts total samples until loop
+	INT64 dpcm_current_sample; // counts current samples
 
     UINT32 tri_freq;
     int linear_counter;
@@ -98,6 +101,8 @@ namespace xgm
     inline double calc_tri (UINT32 clocks);
     inline double calc_dmc (UINT32 clocks);
     inline double calc_noise (UINT32 clocks);
+
+	INT16 get_next_dpcm();
 
 	double linear_approximate(double now_a, double min_a, double max_a, double min_b, double max_b);
 

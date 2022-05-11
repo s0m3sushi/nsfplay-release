@@ -343,7 +343,36 @@ namespace xgm
 			}
 		}
 
-		return (damp<<1) + dac_lsb;
+		//INT16 next_damp = get_next_dpcm();
+		// return (damp<<1) + dac_lsb;
+		return damp * 2.0 + (double)dac_lsb;
+		// return ((damp * 2.0 + (double)dac_lsb) + (next_damp * 2.0 + (double)dac_lsb)) / 2.0;
+		//double result = linear_approximate(
+		//	dpcm_current_sample, 0, dpcm_counter,
+		//	damp * 2.0 + (double)dac_lsb, next_damp * 2.0 + (double)dac_lsb
+		//);
+		//dpcm_current_sample++;
+		//if (dpcm_current_sample >= dpcm_counter) {
+		//	dpcm_current_sample = 0;
+		//}
+
+		//return result;
+	}
+
+	INT16 NES_DMC::get_next_dpcm() {
+		if (data > 0x100) // data = 0x100 when shift register is empty
+		{
+			if (!empty)
+			{
+				if ((data & 1) && (damp < 63)) {
+					return damp + 1;
+				}
+				else if (!(data & 1) && (0 < damp)) {
+					return damp - 1;
+				}
+			}
+		}
+		return damp;
 	}
 
   void NES_DMC::TickFrameSequence (UINT32 clocks)
@@ -376,12 +405,37 @@ namespace xgm
 
     double m[3];
     // m[0] = tnd_table[0][out[0]][0][0];
-	m[0] = (UINT32)(MASTER*(out[0] * 45.0) / 208.0);
+	m[0] = (MASTER*(out[0] * 45.0) / 208.0);
     //m[1] = tnd_table[0][0][out[1]][0];
 	//m[1] = (UINT32)(MASTER*((double)out[1] * 0.00078125) / 208.0);
-	m[1] = (UINT32)(MASTER*(out[1] * 1.95) / 208.0);
+	m[1] = (MASTER*(out[1] * 1.95) / 208.0);
 	//m[1] = (UINT32)(MASTER*((double)out[1] * 2.0) / 208.0);
-	m[2] = tnd_table[0][0][0][(UINT32)out[2]];
+	//m[2] = tnd_table[0][0][0][(UINT32)out[2]];
+	m[2] = (MASTER*(out[2]) / 208.0);
+
+	// anti-click nullifies any 4011 write but preserves nonlinearity
+	if (true)
+	{
+		if (dmc_pop) // $4011 will cause pop this frame
+		{
+			// adjust offset to counteract pop
+			dmc_pop_offset += dmc_pop_follow - m[2];
+			dmc_pop = false;
+
+			// prevent overflow, keep headspace at edges
+			const INT32 OFFSET_MAX = (1 << 30) - (4 << 16);
+			if (dmc_pop_offset > OFFSET_MAX) dmc_pop_offset = OFFSET_MAX;
+			if (dmc_pop_offset < -OFFSET_MAX) dmc_pop_offset = -OFFSET_MAX;
+		}
+		dmc_pop_follow = m[2]; // remember previous position
+
+		m[2] += dmc_pop_offset; // apply offset
+
+		// TODO implement this in a better way
+		// roll off offset (not ideal, but prevents overflow)
+		if (dmc_pop_offset > 0) --dmc_pop_offset;
+		else if (dmc_pop_offset < 0) ++dmc_pop_offset;
+	}
 
     b[0]  = m[0] * (double)sm[0][0];
     b[0] += m[1] * (double)sm[0][1];
@@ -461,12 +515,18 @@ namespace xgm
 
     InitializeTNDTable(8227,12241,22638);
 
+	for (i = 0; i < 16; i++) {
+		double freq = freq_table[0][i];
+		dpcm_max_count_table[i] = (480000.0) / (DEFAULT_CLOCK / freq);
+	}
+
     counter[0] = 0;
     counter[1] = 0;
     counter[2] = 0;
     tphase = 0;
     nfreq = wavlen_table[0][0];
     dfreq = freq_table[0][0];
+	dpcm_counter = dpcm_max_count_table[0];
     tri_freq = 0;
     linear_counter = 0;
     linear_counter_reload = 0;
@@ -634,6 +694,8 @@ namespace xgm
 
     //DEBUG_OUT("$%04X %02X\n", adr, val);
 
+	int old_dpcm_counter;
+
     switch (adr)
     {
 
@@ -699,7 +761,10 @@ namespace xgm
         irq = false;
         cpu->UpdateIRQ(NES_CPU::IRQD_DMC, false);
       }
-      dfreq = freq_table[pal][val&15];
+	  dfreq = freq_table[pal][val&15];
+	  old_dpcm_counter = dpcm_counter;
+	  dpcm_counter = dpcm_max_count_table[val & 15];
+	  dpcm_current_sample = linear_approximate(dpcm_current_sample, 0, old_dpcm_counter, 0, dpcm_counter);
       break;
 
     case 0x4011:
