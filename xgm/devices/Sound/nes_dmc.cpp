@@ -3,6 +3,8 @@
 #include <cstdlib>
 #include <math.h>
 
+#define M_PI           3.14159265358979323846
+
 namespace xgm
 {
   const UINT32 NES_DMC::wavlen_table[2][16] = {
@@ -65,6 +67,80 @@ namespace xgm
     for(int c=0;c<2;++c)
         for(int t=0;t<3;++t)
             sm[c][t] = 128;
+
+	for (int i = 0; i <= 0b11111111111; i++) {
+		double freq = DEFAULT_CLOCK / (32.0 * (i + 1));
+		double excess;
+		if (freq < 20)
+			excess = 128.41;
+		else if (freq >= 20 && freq < 25)
+			excess = linear_approximate(freq, 20, 25, 128.41, 124.15);
+		else if (freq >= 25 && freq < 31.5)
+			excess = linear_approximate(freq, 25, 31.5, 124.15, 120.11);
+		else if (freq >= 31.5 && freq < 40)
+			excess = linear_approximate(freq, 31.5, 40, 120.11, 116.38);
+		else if (freq >= 40 && freq < 50)
+			excess = linear_approximate(freq, 40, 50, 116.38, 113.35);
+		else if (freq >= 50 && freq < 63)
+			excess = linear_approximate(freq, 50, 63, 113.35, 110.65);
+		else if (freq >= 63 && freq < 80)
+			excess = linear_approximate(freq, 63, 80, 110.65, 108.16);
+		else if (freq >= 80 && freq < 100)
+			excess = linear_approximate(freq, 80, 100, 108.16, 106.17);
+		else if (freq >= 100 && freq < 125)
+			excess = linear_approximate(freq, 100, 125, 106.17, 104.48);
+		else if (freq >= 125 && freq < 160)
+			excess = linear_approximate(freq, 125, 160, 104.48, 103.03);
+		else if (freq >= 160 && freq < 200)
+			excess = linear_approximate(freq, 160, 200, 103.03, 101.85);
+		else if (freq >= 200 && freq < 250)
+			excess = linear_approximate(freq, 200, 250, 101.85, 100.97);
+		else if (freq >= 250 && freq < 315)
+			excess = linear_approximate(freq, 250, 315, 100.97, 100.3);
+		else if (freq >= 315 && freq < 400)
+			excess = linear_approximate(freq, 315, 400, 100.3, 99.83);
+		else if (freq >= 400 && freq < 500)
+			excess = linear_approximate(freq, 400, 500, 99.83, 99.62);
+		else if (freq >= 500 && freq < 630)
+			excess = linear_approximate(freq, 500, 630, 99.62, 99.5);
+		else if (freq >= 630 && freq < 800)
+			excess = linear_approximate(freq, 630, 800, 99.5, 99.44);
+		else if (freq >= 800 && freq < 1000)
+			excess = linear_approximate(freq, 800, 1000, 99.44, 100.01);
+		else if (freq >= 1000 && freq < 1250)
+			excess = linear_approximate(freq, 1000, 1250, 100.01, 102.81);
+		else if (freq >= 1250 && freq < 1600)
+			excess = linear_approximate(freq, 1250, 1600, 102.81, 104.25);
+		else if (freq >= 1600 && freq < 2000)
+			excess = linear_approximate(freq, 1600, 2000, 104.25, 101.18);
+		else if (freq >= 2000 && freq < 2500)
+			excess = linear_approximate(freq, 2000, 2500, 101.18, 98.48);
+		else if (freq >= 2500 && freq < 3150)
+			excess = linear_approximate(freq, 2500, 3150, 98.48, 97.67);
+		else if (freq >= 3150 && freq < 4000)
+			excess = linear_approximate(freq, 3150, 4000, 97.67, 99.0);
+		else if (freq >= 4000 && freq < 5000)
+			excess = linear_approximate(freq, 4000, 5000, 99.0, 102.3);
+		else if (freq >= 5000 && freq < 6300)
+			excess = linear_approximate(freq, 5000, 6300, 102.3, 107.23);
+		else if (freq >= 6300 && freq < 8000)
+			excess = linear_approximate(freq, 6300, 8000, 107.23, 111.11);
+		else if (freq >= 8000 && freq < 10000)
+			excess = linear_approximate(freq, 8000, 10000, 111.11, 110.23);
+		else if (freq >= 10000 && freq < 12500)
+			excess = linear_approximate(freq, 10000, 12500, 110.23, 102.07);
+		else if (freq >= 12500 && freq < 16000)
+			excess = linear_approximate(freq, 12500, 16000, 102.07, 100.83);
+		else if (freq >= 16000 && freq < 20000)
+			excess = linear_approximate(freq, 16000, 20000, 100.83, 133.73);
+		else if (freq >= 20000)
+			excess = 133.73;
+
+		//excess -= 106.687096774;
+		excess -= 97.67;
+
+		loudness[i] = excess / 2.35;
+	}
   }
 
 
@@ -219,13 +295,27 @@ namespace xgm
     }
 
 	double ret;
-	if (counter[0] < (triangle_counter / 2.0)) {
-		ret = linear_approximate(counter[0], 0, triangle_counter / 2.0, 0.0, 1.0);
+	if (true) {
+		if (counter[0] < (triangle_counter / 2.0)) {
+			ret = linear_approximate(counter[0], 0, triangle_counter / 2.0, 0.0, 1.0);
+		}
+		else {
+			ret = linear_approximate(counter[0], triangle_counter / 2.0, triangle_counter, 1.0, 0.0);
+		}
+		// ret = (1.0 / 6.0) * (round(ret * 6.0));
 	}
-	 else {
-		ret = linear_approximate(counter[0], triangle_counter / 2.0, triangle_counter, 1.0, 0.0);
+	else if (false) {
+		ret = sin(linear_approximate(counter[0], 0, triangle_counter, 0, 2*M_PI)) / 2.0;
 	}
-	//ret = 1500.0 + (sin(linear_approximate(counter[0], 0, triangle_counter, 0, 6.28318530718)) * 1500.0);
+	else  {
+		ret = linear_approximate(counter[0], 0, triangle_counter, 0, 1);
+	}
+
+	if (true && tri_freq > 2) {
+		ret -= 0.5;
+		ret *= pow(2.0, loudness[tri_freq] / 6.014);
+		ret += 0.5;
+	}
 
 	return ret;
   }
@@ -437,18 +527,16 @@ namespace xgm
 		else if (dmc_pop_offset < 0) ++dmc_pop_offset;
 	}
 
-    b[0]  = m[0] * (double)sm[0][0];
-    b[0] += m[1] * (double)sm[0][1];
-    b[0] += m[2] * (double)sm[0][2];
-    b[0] /= 128.0;
-	//b[0] >>= 4;
+	double out1 = m[0] * sm[0][0];
+	out1 += m[1] * sm[0][1];
+	out1 += m[2] * sm[0][2];
+	b[0] = out1 / 128.0;
 
-    b[1]  = m[0] * (double)sm[1][0];
-    b[1] += m[1] * (double)sm[1][1];
-    b[1] += m[2] * (double)sm[1][2];
-    b[1] /= 128.0;
-	//b[0] >>= 4;
-
+	double out2 = m[0] * sm[1][0];
+	out2 += m[1] * sm[1][1];
+	out2 += m[2] * sm[1][2];
+	b[1] = out2 / 128.0;
+	
     return 2;
   }
 

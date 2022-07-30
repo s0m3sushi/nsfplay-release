@@ -33,6 +33,8 @@ namespace xgm
     UINT32 tnd_table[2][16][16][128];
 	UINT32 dpcm_max_count_table[16];
 
+	double loudness[0b11111111111 + 1];
+
     int option[OPT_END];
     int mask;
     INT32 sm[2][3];
