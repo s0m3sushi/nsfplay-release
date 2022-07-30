@@ -178,36 +178,12 @@ namespace xgm
 
     INT32 m[3];
 
-    if(option[OPT_NONLINEAR_MIXER])
-    {
-        // squares nonlinear
-        INT32 voltage = square_table[out[0] + out[1]];
-        m[0] = out[0] << 6;
-        m[1] = out[1] << 6;
-        INT32 ref = m[0] + m[1];
-        if (ref > 0)
-        {
-            m[0] = (m[0] * voltage) / ref;
-            m[1] = (m[1] * voltage) / ref;
-        }
-        else
-        {
-            m[0] = voltage;
-            m[1] = voltage;
-        }
-
-        // pcm nonlinear
-        m[2] = pcm_table[out[2]];
-    }
-    else
-    {
         // squares
         m[0] = out[0] << 6;
         m[1] = out[1] << 6;
 
         // pcm channel
         m[2] = out[2] << 5;
-    }
 
     // note polarity is flipped on output
 
